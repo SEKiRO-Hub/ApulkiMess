@@ -17,7 +17,7 @@ import { settingsService } from '../../services/settingsService';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { PaymentModal } from '../../components/PaymentModal';
-import { Student } from '../../types';
+import { Student, PlanType } from '../../types';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import { differenceInDays, parseISO, startOfDay } from 'date-fns';
 
@@ -92,8 +92,13 @@ export default function StudentDetailsScreen() {
     }
   };
 
-  const handleConfirmPayment = async (studentId: string, paymentDate: Date, note?: string) => {
-    const res = await studentService.recordPayment(studentId, paymentDate, undefined, note);
+  const handleConfirmPayment = async (
+    studentId: string,
+    paymentDate: Date,
+    note?: string,
+    planType?: PlanType
+  ) => {
+    const res = await studentService.recordPayment(studentId, paymentDate, undefined, note, planType);
     if (res.success) {
       Alert.alert('Success', 'Payment recorded successfully.');
       fetchStudentDetails();
@@ -101,6 +106,10 @@ export default function StudentDetailsScreen() {
       Alert.alert('Error', res.error || 'Failed to record payment.');
     }
   };
+
+  const latestPlanType = student.paymentHistory && student.paymentHistory.length > 0
+    ? student.paymentHistory[0].planType
+    : undefined;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
@@ -162,8 +171,10 @@ export default function StudentDetailsScreen() {
               </Text>
             </View>
             <View style={styles.infoCol}>
-              <Text style={styles.infoLabel}>Validity Period</Text>
-              <Text style={styles.infoValue}>1 Month / Payment</Text>
+              <Text style={styles.infoLabel}>Plan Type</Text>
+              <Text style={styles.infoValue}>
+                {latestPlanType === '15days' ? '15 Days (Half Month)' : 'Monthly (1 Month)'}
+              </Text>
             </View>
           </View>
 
@@ -174,7 +185,7 @@ export default function StudentDetailsScreen() {
           >
             <Ionicons name="card-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
             <Text style={styles.payButtonText}>
-              {student.status === 'active' || student.status === 'expiring' ? 'Renew Payment (+1 Month)' : 'Mark as Paid'}
+              {student.status === 'active' || student.status === 'expiring' ? 'Renew Payment' : 'Record Payment'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -196,7 +207,7 @@ export default function StudentDetailsScreen() {
                       Paid: {paymentService.formatDisplayDate(item.paymentDate)}
                     </Text>
                     <Text style={styles.historySub}>
-                      Valid: {paymentService.formatDisplayDate(item.subscriptionStart)} - {paymentService.formatDisplayDate(item.subscriptionExpiry)}
+                      Valid: {paymentService.formatDisplayDate(item.subscriptionStart)} - {paymentService.formatDisplayDate(item.subscriptionExpiry)} ({item.planType === '15days' ? '15 Days' : 'Monthly'})
                     </Text>
                     {item.note ? <Text style={styles.historyNote}>Note: {item.note}</Text> : null}
                   </View>

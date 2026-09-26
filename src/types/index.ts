@@ -1,10 +1,12 @@
 export type SubscriptionStatus = 'active' | 'expiring' | 'expired' | 'unpaid';
+export type PlanType = 'monthly' | '15days';
 
 export interface PaymentRecord {
   id: string;
   paymentDate: string; // ISO string (e.g. "2026-09-26T00:00:00.000Z")
   subscriptionStart: string; // ISO string
   subscriptionExpiry: string; // ISO string
+  planType?: PlanType;
   amount?: number;
   note?: string;
 }

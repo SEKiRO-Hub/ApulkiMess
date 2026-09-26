@@ -1,5 +1,5 @@
-import { addMonths, parseISO, isAfter, isBefore, startOfDay, format } from 'date-fns';
-import { Student, PaymentRecord } from '../types';
+import { addMonths, addDays, parseISO, isAfter, startOfDay, format } from 'date-fns';
+import { Student, PaymentRecord, PlanType } from '../types';
 
 export const paymentService = {
   /**
@@ -29,53 +29,40 @@ export const paymentService = {
   },
 
   /**
-   * Calculate new subscription start and expiry dates based on renewal logic
+   * Calculate new subscription start and expiry dates based on plan type and start date
    */
   calculateSubscriptionDates(
     student: Student,
-    paymentDateInput: Date = new Date()
+    paymentDateInput: Date = new Date(),
+    planType: PlanType = 'monthly'
   ): { subscriptionStart: Date; subscriptionExpiry: Date } {
-    const paymentDate = startOfDay(paymentDateInput);
+    const subscriptionStart = startOfDay(paymentDateInput);
 
-    let subscriptionStart: Date;
     let subscriptionExpiry: Date;
-
-    if (student.subscriptionExpiry) {
-      const currentExpiry = startOfDay(parseISO(student.subscriptionExpiry));
-      const now = startOfDay(new Date());
-
-      // If existing subscription is STILL active (current expiry is in the future)
-      if (isAfter(currentExpiry, now)) {
-        // Extend existing expiry date by exactly 1 month
-        subscriptionStart = student.subscriptionStart ? parseISO(student.subscriptionStart) : paymentDate;
-        subscriptionExpiry = addMonths(currentExpiry, 1);
-      } else {
-        // Subscription is already expired: start new 1-month period from payment date
-        subscriptionStart = paymentDate;
-        subscriptionExpiry = addMonths(paymentDate, 1);
-      }
+    if (planType === '15days') {
+      subscriptionExpiry = addDays(subscriptionStart, 15);
     } else {
-      // First payment ever for unpaid student
-      subscriptionStart = paymentDate;
-      subscriptionExpiry = addMonths(paymentDate, 1);
+      subscriptionExpiry = addMonths(subscriptionStart, 1);
     }
 
     return { subscriptionStart, subscriptionExpiry };
   },
 
   /**
-   * Process and record a new monthly payment for a student
+   * Process and record a new payment for a student
    */
   processPayment(
     student: Student,
     paymentDateInput: Date = new Date(),
     amount?: number,
-    note?: string
+    note?: string,
+    planType: PlanType = 'monthly'
   ): Student {
     const paymentDateIso = paymentDateInput.toISOString();
     const { subscriptionStart, subscriptionExpiry } = this.calculateSubscriptionDates(
       student,
-      paymentDateInput
+      paymentDateInput,
+      planType
     );
 
     const subscriptionStartIso = subscriptionStart.toISOString();
@@ -86,6 +73,7 @@ export const paymentService = {
       paymentDate: paymentDateIso,
       subscriptionStart: subscriptionStartIso,
       subscriptionExpiry: subscriptionExpiryIso,
+      planType,
       amount,
       note,
     };

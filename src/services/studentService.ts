@@ -1,5 +1,5 @@
 import { differenceInDays, parseISO, startOfDay, subDays, addDays } from 'date-fns';
-import { Student, SubscriptionStatus, FilterStatus, SortOption } from '../types';
+import { Student, SubscriptionStatus, FilterStatus, SortOption, PlanType } from '../types';
 import { storage } from './storage';
 import { paymentService } from './paymentService';
 
@@ -147,13 +147,14 @@ export const studentService = {
   },
 
   /**
-   * Record monthly payment for a student
+   * Record payment for a student
    */
   async recordPayment(
     id: string,
     paymentDateInput: Date = new Date(),
     amount?: number,
-    note?: string
+    note?: string,
+    planType: PlanType = 'monthly'
   ): Promise<{ success: boolean; student?: Student; error?: string }> {
     const students = await this.getStudents();
     const student = students.find((s) => s.id === id);
@@ -162,7 +163,7 @@ export const studentService = {
       return { success: false, error: 'Student not found.' };
     }
 
-    const updatedStudent = paymentService.processPayment(student, paymentDateInput, amount, note);
+    const updatedStudent = paymentService.processPayment(student, paymentDateInput, amount, note, planType);
     updatedStudent.status = this.calculateStatus(updatedStudent);
 
     const updatedList = students.map((s) => (s.id === id ? updatedStudent : s));

@@ -24,7 +24,7 @@ import { NotificationBanner } from '../components/NotificationBanner';
 import { studentService } from '../services/studentService';
 import { settingsService } from '../services/settingsService';
 import { notificationService } from '../services/notificationService';
-import { Student, FilterStatus, SortOption, AppSettings } from '../types';
+import { Student, FilterStatus, SortOption, AppSettings, PlanType } from '../types';
 import { COLORS, SHADOWS } from '../constants/theme';
 
 export default function DashboardScreen() {
@@ -108,8 +108,13 @@ export default function DashboardScreen() {
     setPaymentModalVisible(true);
   };
 
-  const handleConfirmPayment = async (studentId: string, paymentDate: Date, note?: string) => {
-    const res = await studentService.recordPayment(studentId, paymentDate, undefined, note);
+  const handleConfirmPayment = async (
+    studentId: string,
+    paymentDate: Date,
+    note?: string,
+    planType?: PlanType
+  ) => {
+    const res = await studentService.recordPayment(studentId, paymentDate, undefined, note, planType);
     if (res.success && res.student) {
       // Schedule push notification for future expiry
       notificationService.scheduleStudentExpiryNotification(res.student, settings.warningDays);
