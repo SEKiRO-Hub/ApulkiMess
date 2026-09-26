@@ -1,17 +1,41 @@
-import * as Notifications from 'expo-notifications';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
 import { Student } from '../types';
 import { parseISO, differenceInDays } from 'date-fns';
 
-// Configure default notification handler for Expo Notifications
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+const isExpoGo =
+  Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
+  (Constants as any).appOwnership === 'expo';
+
+function getNotificationsModule() {
+  if (isExpoGo || Platform.OS === 'web') {
+    return null;
+  }
+  try {
+    const Notifications = require('expo-notifications');
+    return Notifications;
+  } catch (e) {
+    console.warn('[NotificationService] expo-notifications module unavailable:', e);
+    return null;
+  }
+}
+
+// Safely configure default notification handler if available (not in Expo Go)
+const NotificationsModule = getNotificationsModule();
+if (NotificationsModule) {
+  try {
+    NotificationsModule.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  } catch (e) {
+    console.warn('[NotificationService] Failed to set notification handler:', e);
+  }
+}
 
 export const notificationService = {
   /**
@@ -19,7 +43,8 @@ export const notificationService = {
    */
   async requestPermissions(): Promise<boolean> {
     try {
-      if (Platform.OS === 'web') return false;
+      const Notifications = getNotificationsModule();
+      if (!Notifications) return false;
 
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
@@ -43,6 +68,9 @@ export const notificationService = {
     if (!student.subscriptionExpiry) return;
 
     try {
+      const Notifications = getNotificationsModule();
+      if (!Notifications) return;
+
       const expiryDate = parseISO(student.subscriptionExpiry);
       const now = new Date();
 
@@ -91,6 +119,9 @@ export const notificationService = {
    */
   async cancelAllNotifications(): Promise<void> {
     try {
+      const Notifications = getNotificationsModule();
+      if (!Notifications) return;
+
       await Notifications.cancelAllScheduledNotificationsAsync();
     } catch (e) {
       console.warn('[NotificationService] Failed to cancel notifications:', e);
