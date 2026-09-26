@@ -2,7 +2,7 @@ import { differenceInDays, parseISO, startOfDay, subDays, addDays } from 'date-f
 import { Student, SubscriptionStatus, FilterStatus, SortOption, PlanType } from '../types';
 import { storage } from './storage';
 import { paymentService } from './paymentService';
-import { ref, set, get, remove, update, runTransaction } from 'firebase/database';
+import { ref, set, get, remove, update, runTransaction, onValue } from 'firebase/database';
 import { db } from '../../firebase';
 
 const STUDENTS_KEY = '@apulki_mess_students_v1';
@@ -81,6 +81,32 @@ export const studentService = {
       ...student,
       status: this.calculateStatus(student, warningDays),
     }));
+  },
+
+  subscribeToStudents(
+    warningDays: number,
+    onUpdate: (students: Student[]) => void
+  ): () => void {
+    const dbRef = ref(db, 'students');
+    const unsubscribe = onValue(dbRef, (snapshot) => {
+      const rawList: Student[] = [];
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        Object.keys(data).forEach((key) => {
+          const studentData = data[key];
+          studentData.paymentHistory = studentData.paymentHistory || [];
+          rawList.push(studentData);
+        });
+      }
+
+      const processedList = rawList.map((student) => ({
+        ...student,
+        status: this.calculateStatus(student, warningDays),
+      }));
+      onUpdate(processedList);
+    });
+
+    return unsubscribe;
   },
 
   /**

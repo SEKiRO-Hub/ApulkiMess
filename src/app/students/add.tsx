@@ -10,6 +10,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { studentService } from '../../services/studentService';
@@ -42,12 +43,14 @@ export default function AddStudentScreen() {
     }
   };
 
+  const { bottom } = useSafeAreaInsets();
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.keyboardView}
     >
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: Math.max(bottom, 20) }]} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
           <View style={styles.infoBox}>
             <Ionicons name="information-circle-outline" size={22} color={COLORS.primary} style={styles.infoIcon} />

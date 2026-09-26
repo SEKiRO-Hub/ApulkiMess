@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/theme';
 
 interface Props {
@@ -26,6 +27,8 @@ export const ConfirmDialog: React.FC<Props> = ({
 }) => {
   if (!visible) return null;
 
+  const { top, bottom } = useSafeAreaInsets();
+
   return (
     <Modal
       transparent
@@ -33,7 +36,7 @@ export const ConfirmDialog: React.FC<Props> = ({
       visible={visible}
       onRequestClose={onCancel}
     >
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { paddingTop: top, paddingBottom: bottom }]}>
         <View style={styles.modalCard}>
           <View style={[styles.iconContainer, isDanger && styles.iconDanger]}>
             <Ionicons

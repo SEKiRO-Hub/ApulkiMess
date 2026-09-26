@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { COLORS } from '../constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Props {
   messName?: string;
@@ -13,13 +14,16 @@ export const Header: React.FC<Props> = ({ messName = 'Apulki Mess' }) => {
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning ☀️';
-    if (hour < 17) return 'Good Afternoon 🌤️';
-    return 'Good Evening 🌙';
+    if (hour >= 5 && hour < 12) return 'Good Morning ☀️';
+    if (hour >= 12 && hour < 17) return 'Good Afternoon 🌤️';
+    if (hour >= 17 && hour < 21) return 'Good Evening 🌙';
+    return 'Good Night 😴';
   };
 
+  const insets = useSafeAreaInsets();
+
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, { paddingTop: insets.top }]}>
       <View>
         <Text style={styles.greeting}>{getGreeting()}</Text>
         <Text style={styles.title}>{messName}</Text>

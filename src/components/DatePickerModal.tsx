@@ -17,6 +17,7 @@ import {
   subDays,
 } from 'date-fns';
 import { COLORS, SHADOWS } from '../constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Props {
   visible: boolean;
@@ -64,6 +65,8 @@ export const DatePickerModal: React.FC<Props> = ({
     onClose();
   };
 
+  const { top, bottom } = useSafeAreaInsets();
+
   return (
     <Modal
       transparent
@@ -71,7 +74,7 @@ export const DatePickerModal: React.FC<Props> = ({
       visible={visible}
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { paddingTop: top, paddingBottom: bottom }]}>
         <View style={styles.modalCard}>
           {/* Header */}
           <View style={styles.header}>

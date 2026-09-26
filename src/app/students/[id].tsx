@@ -7,8 +7,8 @@ import {
   TouchableOpacity,
   Linking,
   Alert,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { studentService } from '../../services/studentService';

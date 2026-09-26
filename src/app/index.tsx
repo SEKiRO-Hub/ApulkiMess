@@ -6,12 +6,12 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
-  SafeAreaView,
   Alert,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Header } from '../components/Header';
 import { SummaryCard } from '../components/SummaryCard';
 import { SearchBar } from '../components/SearchBar';
@@ -52,51 +52,66 @@ export default function DashboardScreen() {
   // In-app Notification Banner State
   const [alerts, setAlerts] = useState<any[]>([]);
 
-  const loadData = async () => {
+  useEffect(() => {
+    let unsubscribeStudents: (() => void) | undefined;
+    
+    const init = async () => {
+      try {
+        const currentSettings = await settingsService.getSettings();
+        setSettings(currentSettings);
+        
+        unsubscribeStudents = studentService.subscribeToStudents(currentSettings.warningDays, (list) => {
+          setStudents(list);
+          setAlerts(notificationService.getInAppAlerts(list, currentSettings.warningDays));
+          setLoading(false);
+          setRefreshing(false);
+        });
+      } catch (e) {
+        console.error('Failed to init dashboard:', e);
+        setLoading(false);
+        setRefreshing(false);
+      }
+    };
+    
+    init();
+    
+    return () => {
+      if (unsubscribeStudents) {
+        unsubscribeStudents();
+      }
+    };
+  }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
     try {
       const currentSettings = await settingsService.getSettings();
       setSettings(currentSettings);
-
       const list = await studentService.getStudents(currentSettings.warningDays);
-
       setStudents(list);
-
-      // In-app alerts
-      const inAppAlerts = notificationService.getInAppAlerts(list, currentSettings.warningDays);
-      setAlerts(inAppAlerts);
+      setAlerts(notificationService.getInAppAlerts(list, currentSettings.warningDays));
     } catch (e) {
-      console.error('Failed to load dashboard data:', e);
+      console.error('Failed to refresh data:', e);
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   };
 
-  // Re-fetch when screen gains focus
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [])
-  );
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadData();
-  };
-
   // Filtered and sorted student list
-  const displayedStudents = studentService.filterAndSortStudents(
-    students,
-    searchQuery,
-    activeFilter,
-    activeSort
-  );
+  const displayedStudents = React.useMemo(() => {
+    return studentService.filterAndSortStudents(
+      students,
+      searchQuery,
+      activeFilter,
+      activeSort
+    );
+  }, [students, searchQuery, activeFilter, activeSort]);
 
   // Quick sections
-  const expiringStudents = students.filter((s) => s.status === 'expiring');
-  const expiredStudents = students.filter((s) => s.status === 'expired');
+  const expiringStudents = React.useMemo(() => students.filter((s) => s.status === 'expiring'), [students]);
+  const expiredStudents = React.useMemo(() => students.filter((s) => s.status === 'expired'), [students]);
 
-  const stats = studentService.getDashboardStats(students);
+  const stats = React.useMemo(() => studentService.getDashboardStats(students), [students]);
 
   // Actions
   const handleStudentPress = (student: Student) => {
@@ -119,7 +134,6 @@ export default function DashboardScreen() {
       // Schedule push notification for future expiry
       notificationService.scheduleStudentExpiryNotification(res.student, settings.warningDays);
       Alert.alert('Success', 'Payment recorded successfully!');
-      loadData();
     } else {
       Alert.alert('Error', res.error || 'Failed to record payment.');
     }
@@ -137,7 +151,6 @@ export default function DashboardScreen() {
     const res = await studentService.pauseSubscription(selectedStudentForPause.id, date);
     if (res.success) {
       Alert.alert('Paused', 'Subscription has been paused.');
-      loadData();
     } else {
       Alert.alert('Error', res.error || 'Failed to pause subscription.');
     }
@@ -155,7 +168,6 @@ export default function DashboardScreen() {
             const res = await studentService.resumeSubscription(student.id, new Date());
             if (res.success) {
               Alert.alert('Resumed', 'Subscription is now active again.');
-              loadData();
             } else {
               Alert.alert('Error', res.error || 'Failed to resume subscription.');
             }
@@ -168,7 +180,7 @@ export default function DashboardScreen() {
   const isDefaultView = searchQuery === '' && activeFilter === 'all';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['right', 'bottom', 'left']}>
       <View style={styles.container}>
         <FlatList
           data={displayedStudents}

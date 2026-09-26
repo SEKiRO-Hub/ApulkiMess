@@ -10,6 +10,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { studentService } from '../../services/studentService';
@@ -66,12 +67,14 @@ export default function EditStudentScreen() {
     );
   }
 
+  const { bottom } = useSafeAreaInsets();
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={styles.keyboardView}
     >
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: Math.max(bottom, 20) }]} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
           <Text style={styles.title}>Edit Student Information</Text>
 

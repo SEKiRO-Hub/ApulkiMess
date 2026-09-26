@@ -6,6 +6,7 @@ import { paymentService } from '../services/paymentService';
 import { DatePickerModal } from './DatePickerModal';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { format, isToday } from 'date-fns';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Props {
   visible: boolean;
@@ -71,6 +72,8 @@ export const PaymentModal: React.FC<Props> = ({
     onClose();
   };
 
+  const { top, bottom } = useSafeAreaInsets();
+
   return (
     <>
       <Modal
@@ -79,8 +82,8 @@ export const PaymentModal: React.FC<Props> = ({
         visible={visible}
         onRequestClose={onClose}
       >
-        <View style={styles.overlay}>
-          <View style={styles.modalCard}>
+        <View style={[styles.overlay, { paddingTop: top }]}>
+          <View style={[styles.modalCard, { paddingBottom: Math.max(bottom, 20) }]}>
             <View style={styles.header}>
               <View style={styles.titleRow}>
                 <Ionicons name="card-outline" size={24} color={COLORS.primary} style={{ marginRight: 8 }} />
