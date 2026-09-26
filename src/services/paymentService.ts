@@ -34,15 +34,16 @@ export const paymentService = {
   calculateSubscriptionDates(
     student: Student,
     paymentDateInput: Date = new Date(),
-    planType: PlanType = 'monthly'
+    planType: PlanType = 'monthly',
+    customDurationDays: number = 30
   ): { subscriptionStart: Date; subscriptionExpiry: Date } {
     const subscriptionStart = startOfDay(paymentDateInput);
 
     let subscriptionExpiry: Date;
-    if (planType === '15days') {
-      subscriptionExpiry = addDays(subscriptionStart, 15);
+    if (planType === 'custom') {
+      subscriptionExpiry = addDays(subscriptionStart, customDurationDays);
     } else {
-      subscriptionExpiry = addMonths(subscriptionStart, 1);
+      subscriptionExpiry = addDays(subscriptionStart, 30);
     }
 
     return { subscriptionStart, subscriptionExpiry };
@@ -56,13 +57,16 @@ export const paymentService = {
     paymentDateInput: Date = new Date(),
     amount?: number,
     note?: string,
-    planType: PlanType = 'monthly'
+    planType: PlanType = 'monthly',
+    durationDays: number = 30,
+    meals?: any
   ): Student {
     const paymentDateIso = paymentDateInput.toISOString();
     const { subscriptionStart, subscriptionExpiry } = this.calculateSubscriptionDates(
       student,
       paymentDateInput,
-      planType
+      planType,
+      durationDays
     );
 
     const subscriptionStartIso = subscriptionStart.toISOString();
@@ -74,6 +78,8 @@ export const paymentService = {
       subscriptionStart: subscriptionStartIso,
       subscriptionExpiry: subscriptionExpiryIso,
       planType,
+      durationDays,
+      meals,
       amount,
       note,
     };
@@ -85,6 +91,11 @@ export const paymentService = {
       paymentDate: paymentDateIso,
       subscriptionStart: subscriptionStartIso,
       subscriptionExpiry: subscriptionExpiryIso,
+      planType,
+      durationDays,
+      meals,
+      totalAmount: amount,
+      dailyAmount: amount && durationDays ? parseFloat((amount / durationDays).toFixed(2)) : undefined,
       paymentHistory: updatedPaymentHistory,
     };
   },

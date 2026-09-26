@@ -2,6 +2,8 @@ import { differenceInDays, parseISO, startOfDay, subDays, addDays } from 'date-f
 import { Student, SubscriptionStatus, FilterStatus, SortOption, PlanType } from '../types';
 import { storage } from './storage';
 import { paymentService } from './paymentService';
+import { ref, set, get, remove, update, runTransaction } from 'firebase/database';
+import { db } from '../../firebase';
 
 const STUDENTS_KEY = '@apulki_mess_students_v1';
 
@@ -10,6 +12,10 @@ export const studentService = {
    * Calculate dynamic subscription status based on current date
    */
   calculateStatus(student: Student, warningDays: number = 3): SubscriptionStatus {
+    if (student.isPaused) {
+      return 'paused';
+    }
+
     if (!student.subscriptionExpiry || !student.paymentDate) {
       return 'unpaid';
     }
@@ -19,7 +25,7 @@ export const studentService = {
 
     const daysRemaining = differenceInDays(expiry, now);
 
-    if (daysRemaining < 0) {
+    if (daysRemaining <= 0) {
       return 'expired';
     } else if (daysRemaining <= warningDays) {
       return 'expiring';
@@ -29,11 +35,47 @@ export const studentService = {
   },
 
   /**
+   * Calculate remaining days
+   */
+  calculateRemainingDays(student: Student): number | undefined {
+    if (!student.subscriptionExpiry) return undefined;
+    return differenceInDays(
+      startOfDay(parseISO(student.subscriptionExpiry)),
+      startOfDay(new Date())
+    );
+  },
+
+  /**
+   * Check if subscription can be paused
+   */
+  canPauseSubscription(student: Student): { canPause: boolean; reason?: string } {
+    if (student.status === 'paused') return { canPause: false, reason: 'Already paused' };
+    if (student.status === 'expired' || student.status === 'unpaid') return { canPause: false, reason: 'No active subscription' };
+    
+    const daysRemaining = this.calculateRemainingDays(student);
+    if (daysRemaining === undefined || daysRemaining <= 3) {
+      return { canPause: false, reason: 'Cannot pause subscription with 3 or fewer days remaining.' };
+    }
+    
+    return { canPause: true };
+  },
+
+  /**
    * Get all students from storage with status computed
    */
   async getStudents(warningDays: number = 3): Promise<Student[]> {
-    const rawList = await storage.getItem<Student[]>(STUDENTS_KEY);
-    if (!rawList) return [];
+    const dbRef = ref(db, 'students');
+    const snapshot = await get(dbRef);
+    const rawList: Student[] = [];
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      Object.keys(data).forEach((key) => {
+        // Ensure paymentHistory is an array, as Firebase drops empty arrays
+        const studentData = data[key];
+        studentData.paymentHistory = studentData.paymentHistory || [];
+        rawList.push(studentData);
+      });
+    }
 
     return rawList.map((student) => ({
       ...student,
@@ -86,8 +128,12 @@ export const studentService = {
       status: 'unpaid',
     };
 
-    const updatedList = [newStudent, ...students];
-    await storage.setItem(STUDENTS_KEY, updatedList);
+    try {
+      await set(ref(db, `students/${newStudent.id}`), newStudent);
+    } catch (e) {
+      console.error('Failed to save to Firebase:', e);
+      return { success: false, error: 'Failed to save to cloud.' };
+    }
 
     return { success: true, student: newStudent };
   },
@@ -125,25 +171,32 @@ export const studentService = {
       return { success: false, error: `Phone number is already used by ${duplicate.name}.` };
     }
 
-    const updatedStudent: Student = {
-      ...students[targetIndex],
+    const updates = {
       name: trimmedName,
       phone: cleanPhone,
     };
 
-    students[targetIndex] = updatedStudent;
-    await storage.setItem(STUDENTS_KEY, students);
+    try {
+      await update(ref(db, `students/${id}`), updates);
+    } catch (e) {
+      console.error('Failed to update student in Firebase:', e);
+      return { success: false, error: 'Failed to update cloud database.' };
+    }
 
-    return { success: true, student: updatedStudent };
+    return { success: true, student: { ...students[targetIndex], ...updates } };
   },
 
   /**
    * Delete student by ID
    */
   async deleteStudent(id: string): Promise<boolean> {
-    const students = await this.getStudents();
-    const filtered = students.filter((s) => s.id !== id);
-    return await storage.setItem(STUDENTS_KEY, filtered);
+    try {
+      await remove(ref(db, `students/${id}`));
+      return true;
+    } catch (e) {
+      console.error('Failed to delete student from Firebase:', e);
+      return false;
+    }
   },
 
   /**
@@ -154,22 +207,168 @@ export const studentService = {
     paymentDateInput: Date = new Date(),
     amount?: number,
     note?: string,
-    planType: PlanType = 'monthly'
+    planType: PlanType = 'monthly',
+    durationDays: number = 30,
+    meals?: any
   ): Promise<{ success: boolean; student?: Student; error?: string }> {
-    const students = await this.getStudents();
-    const student = students.find((s) => s.id === id);
+    try {
+      const dbRef = ref(db, `students/${id}`);
+      let transactionSuccess = false;
+      let finalStudent: Student | undefined = undefined;
+      let transactionError: string | undefined = undefined;
 
-    if (!student) {
-      return { success: false, error: 'Student not found.' };
+      await runTransaction(dbRef, (currentData: Student | null) => {
+        if (!currentData) {
+          transactionError = 'Student not found.';
+          return;
+        }
+
+        const updatedStudent = paymentService.processPayment(currentData, paymentDateInput, amount, note, planType, durationDays, meals);
+        updatedStudent.status = this.calculateStatus(updatedStudent);
+
+        finalStudent = updatedStudent;
+        transactionSuccess = true;
+        return updatedStudent; // Commit the entire updated student via transaction
+      });
+
+      if (!transactionSuccess) {
+        return { success: false, error: transactionError || 'Failed to record payment.' };
+      }
+
+      return { success: true, student: finalStudent };
+    } catch (e) {
+      console.error('Failed to record payment in Firebase:', e);
+      return { success: false, error: 'Failed to record payment in cloud database.' };
     }
+  },
 
-    const updatedStudent = paymentService.processPayment(student, paymentDateInput, amount, note, planType);
-    updatedStudent.status = this.calculateStatus(updatedStudent);
+  /**
+   * Pause Subscription
+   */
+  async pauseSubscription(id: string, pauseDateInput: Date): Promise<{ success: boolean; student?: Student; error?: string }> {
+    try {
+      const dbRef = ref(db, `students/${id}`);
+      let transactionSuccess = false;
+      let finalStudent: Student | undefined = undefined;
+      let transactionError: string | undefined = undefined;
 
-    const updatedList = students.map((s) => (s.id === id ? updatedStudent : s));
-    await storage.setItem(STUDENTS_KEY, updatedList);
+      await runTransaction(dbRef, (currentData: Student | null) => {
+        if (!currentData) {
+          transactionError = 'Student not found.';
+          return; // Abort
+        }
+        if (!currentData.subscriptionExpiry) {
+          transactionError = 'No active subscription.';
+          return;
+        }
 
-    return { success: true, student: updatedStudent };
+        const expiry = startOfDay(parseISO(currentData.subscriptionExpiry));
+        const pauseStart = startOfDay(pauseDateInput);
+        const nowStart = startOfDay(new Date());
+
+        if (pauseStart < nowStart) {
+          transactionError = 'Pause date cannot be in the past.';
+          return;
+        }
+
+        const daysRemaining = differenceInDays(expiry, pauseStart);
+
+        if (daysRemaining <= 3) {
+          transactionError = 'Cannot pause subscription with 3 or fewer days remaining.';
+          return;
+        }
+
+        currentData.isPaused = true;
+        currentData.pauseDate = pauseStart.toISOString();
+        currentData.status = 'paused';
+        
+        finalStudent = currentData;
+        transactionSuccess = true;
+        return currentData; // Commit
+      });
+
+      if (!transactionSuccess) {
+        return { success: false, error: transactionError || 'Failed to pause.' };
+      }
+      return { success: true, student: finalStudent };
+    } catch (e) {
+      return { success: false, error: 'Failed to pause in cloud database.' };
+    }
+  },
+
+  /**
+   * Resume Subscription
+   */
+  async resumeSubscription(id: string, resumeDateInput: Date = new Date()): Promise<{ success: boolean; student?: Student; error?: string }> {
+    try {
+      const dbRef = ref(db, `students/${id}`);
+      let transactionSuccess = false;
+      let finalStudent: Student | undefined = undefined;
+      let transactionError: string | undefined = undefined;
+
+      await runTransaction(dbRef, (currentData: Student | null) => {
+        if (!currentData) {
+          transactionError = 'Student not found.';
+          return;
+        }
+        if (!currentData.isPaused || !currentData.pauseDate) {
+          transactionError = 'Subscription is not paused.';
+          return; // This blocks duplicate rapid resumes
+        }
+
+        const pauseStart = parseISO(currentData.pauseDate);
+        const resumeDate = startOfDay(resumeDateInput);
+        
+        if (resumeDate < startOfDay(pauseStart)) {
+          transactionError = 'Resume date cannot be before pause date.';
+          return;
+        }
+
+        const pauseDuration = differenceInDays(resumeDate, pauseStart);
+
+        let actualExtension = 0;
+        if (pauseDuration > 3) {
+          actualExtension = pauseDuration - 3;
+        }
+
+        let newExpiryIso = currentData.subscriptionExpiry;
+        if (actualExtension > 0 && currentData.subscriptionExpiry) {
+          const currentExpiry = parseISO(currentData.subscriptionExpiry);
+          const newExpiry = addDays(currentExpiry, actualExtension);
+          newExpiryIso = newExpiry.toISOString();
+        }
+
+        const newHistoryEntry = {
+          pauseDate: currentData.pauseDate,
+          resumeDate: resumeDate.toISOString(),
+          requestedDays: pauseDuration,
+          deductedDays: Math.min(3, pauseDuration),
+          actualExtension: actualExtension,
+        };
+
+        currentData.isPaused = false;
+        currentData.pauseDate = null;
+        currentData.subscriptionExpiry = newExpiryIso;
+        currentData.pauseHistory = [newHistoryEntry, ...(currentData.pauseHistory || [])];
+        
+        finalStudent = currentData;
+        transactionSuccess = true;
+        return currentData; // Commit
+      });
+
+      if (!transactionSuccess) {
+        return { success: false, error: transactionError || 'Failed to resume.' };
+      }
+      
+      if (finalStudent) {
+        finalStudent.status = this.calculateStatus(finalStudent);
+        await update(ref(db, `students/${id}`), { status: finalStudent.status });
+      }
+
+      return { success: true, student: finalStudent };
+    } catch (e) {
+      return { success: false, error: 'Failed to resume in cloud database.' };
+    }
   },
 
   /**
@@ -229,117 +428,29 @@ export const studentService = {
     let expiring = 0;
     let expired = 0;
     let unpaid = 0;
+    let paused = 0;
 
     students.forEach((s) => {
       if (s.status === 'active') active++;
       else if (s.status === 'expiring') expiring++;
       else if (s.status === 'expired') expired++;
       else if (s.status === 'unpaid') unpaid++;
+      else if (s.status === 'paused') paused++;
     });
 
-    return { total, active, expiring, expired, unpaid };
-  },
-
-  /**
-   * Load rich sample data for realistic mess management demo
-   */
-  async loadSampleData(): Promise<Student[]> {
-    const now = new Date();
-    const todayIso = now.toISOString();
-
-    const sampleStudents: Student[] = [
-      {
-        id: 'stud_sample_1',
-        name: 'Rahul Patil',
-        phone: '9876543210',
-        paymentDate: subDays(now, 5).toISOString(),
-        subscriptionStart: subDays(now, 5).toISOString(),
-        subscriptionExpiry: addDays(now, 25).toISOString(),
-        paymentHistory: [
-          {
-            id: 'pay_s1_1',
-            paymentDate: subDays(now, 5).toISOString(),
-            subscriptionStart: subDays(now, 5).toISOString(),
-            subscriptionExpiry: addDays(now, 25).toISOString(),
-            amount: 3000,
-          },
-        ],
-        createdAt: subDays(now, 60).toISOString(),
-      },
-      {
-        id: 'stud_sample_2',
-        name: 'Amit Shah',
-        phone: '9876543211',
-        paymentDate: subDays(now, 28).toISOString(),
-        subscriptionStart: subDays(now, 28).toISOString(),
-        subscriptionExpiry: addDays(now, 2).toISOString(), // Expiring in 2 days!
-        paymentHistory: [
-          {
-            id: 'pay_s2_1',
-            paymentDate: subDays(now, 28).toISOString(),
-            subscriptionStart: subDays(now, 28).toISOString(),
-            subscriptionExpiry: addDays(now, 2).toISOString(),
-            amount: 3000,
-          },
-        ],
-        createdAt: subDays(now, 30).toISOString(),
-      },
-      {
-        id: 'stud_sample_3',
-        name: 'Sahil Patil',
-        phone: '9876543212',
-        paymentDate: subDays(now, 35).toISOString(),
-        subscriptionStart: subDays(now, 35).toISOString(),
-        subscriptionExpiry: subDays(now, 5).toISOString(), // Expired 5 days ago!
-        paymentHistory: [
-          {
-            id: 'pay_s3_1',
-            paymentDate: subDays(now, 35).toISOString(),
-            subscriptionStart: subDays(now, 35).toISOString(),
-            subscriptionExpiry: subDays(now, 5).toISOString(),
-            amount: 3000,
-          },
-        ],
-        createdAt: subDays(now, 90).toISOString(),
-      },
-      {
-        id: 'stud_sample_4',
-        name: 'Priya Sharma',
-        phone: '9876543213',
-        paymentDate: subDays(now, 29).toISOString(),
-        subscriptionStart: subDays(now, 29).toISOString(),
-        subscriptionExpiry: addDays(now, 1).toISOString(), // Expiring tomorrow!
-        paymentHistory: [
-          {
-            id: 'pay_s4_1',
-            paymentDate: subDays(now, 29).toISOString(),
-            subscriptionStart: subDays(now, 29).toISOString(),
-            subscriptionExpiry: addDays(now, 1).toISOString(),
-            amount: 3000,
-          },
-        ],
-        createdAt: subDays(now, 45).toISOString(),
-      },
-      {
-        id: 'stud_sample_5',
-        name: 'Vikas Deshmukh',
-        phone: '9876543214',
-        paymentDate: null,
-        subscriptionStart: null,
-        subscriptionExpiry: null,
-        paymentHistory: [],
-        createdAt: todayIso,
-      },
-    ];
-
-    await storage.setItem(STUDENTS_KEY, sampleStudents);
-    return this.getStudents();
+    return { total, active, expiring, expired, unpaid, paused };
   },
 
   /**
    * Clear all student records
    */
   async clearAllData(): Promise<boolean> {
-    return await storage.removeItem(STUDENTS_KEY);
+    try {
+      await remove(ref(db, 'students'));
+      return true;
+    } catch (e) {
+      console.error('Failed to clear Firebase data:', e);
+      return false;
+    }
   },
 };

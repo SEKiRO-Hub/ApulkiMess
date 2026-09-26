@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Student, PlanType } from '../types';
+import { Student, PlanType, MealSelection } from '../types';
 import { paymentService } from '../services/paymentService';
 import { DatePickerModal } from './DatePickerModal';
 import { COLORS, SHADOWS } from '../constants/theme';
@@ -10,7 +10,7 @@ import { format, isToday } from 'date-fns';
 interface Props {
   visible: boolean;
   student: Student | null;
-  onConfirm: (studentId: string, paymentDate: Date, note?: string, planType?: PlanType) => void;
+  onConfirm: (studentId: string, paymentDate: Date, note?: string, planType?: PlanType, durationDays?: number, meals?: MealSelection, amount?: number) => void;
   onClose: () => void;
 }
 
@@ -22,32 +22,52 @@ export const PaymentModal: React.FC<Props> = ({
 }) => {
   const [note, setNote] = useState('');
   const [planType, setPlanType] = useState<PlanType>('monthly');
+  const [customDays, setCustomDays] = useState('10');
+  const [meals, setMeals] = useState<MealSelection>({
+    breakfast: true,
+    lunch: true,
+    dinner: false,
+  });
   const [paymentDate, setPaymentDate] = useState<Date>(new Date());
   const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [totalAmountInput, setTotalAmountInput] = useState('');
 
   useEffect(() => {
     if (visible) {
       setNote('');
       setPlanType('monthly');
+      setCustomDays('30');
+      setMeals({ breakfast: true, lunch: true, dinner: true });
       setPaymentDate(new Date());
+      setTotalAmountInput('');
     }
   }, [visible]);
 
   if (!visible || !student) return null;
 
+  const durationDays = planType === 'monthly' ? 30 : (parseInt(customDays) || 0);
+
   // Calculate dynamic start and expiry dates in real time based on state
   const { subscriptionStart, subscriptionExpiry } = paymentService.calculateSubscriptionDates(
     student,
     paymentDate,
-    planType
+    planType,
+    durationDays
   );
 
   const previewStart = format(subscriptionStart, 'dd MMM yyyy');
   const previewExpiry = format(subscriptionExpiry, 'dd MMM yyyy');
   const previewPaymentDate = format(paymentDate, 'dd MMM yyyy');
 
+  const totalAmount = parseFloat(totalAmountInput) || 0;
+  
+  const isValidCustomDays = durationDays >= 1 && durationDays <= 30;
+  const hasMealsSelected = meals.breakfast || meals.lunch || meals.dinner;
+  const isValid = isValidCustomDays && hasMealsSelected && totalAmount > 0;
+
   const handleConfirm = () => {
-    onConfirm(student.id, paymentDate, note.trim() || undefined, planType);
+    if (!isValid) return;
+    onConfirm(student.id, paymentDate, note.trim() || undefined, planType, durationDays, meals, totalAmount);
     onClose();
   };
 
@@ -108,24 +128,76 @@ export const PaymentModal: React.FC<Props> = ({
                     activeOpacity={0.8}
                     style={[
                       styles.planOptionCard,
-                      planType === '15days' && styles.selectedPlanCard,
+                      planType === 'custom' && styles.selectedPlanCard,
                     ]}
-                    onPress={() => setPlanType('15days')}
+                    onPress={() => setPlanType('custom')}
                   >
                     <View style={styles.planHeaderRow}>
                       <Ionicons
-                        name={planType === '15days' ? 'radio-button-on' : 'radio-button-off'}
+                        name={planType === 'custom' ? 'radio-button-on' : 'radio-button-off'}
                         size={18}
-                        color={planType === '15days' ? COLORS.primary : COLORS.textMuted}
+                        color={planType === 'custom' ? COLORS.primary : COLORS.textMuted}
                         style={{ marginRight: 6 }}
                       />
-                      <Text style={[styles.planTitle, planType === '15days' && styles.selectedPlanTitle]}>
-                        15 Days Plan
+                      <Text style={[styles.planTitle, planType === 'custom' && styles.selectedPlanTitle]}>
+                        Custom Plan
                       </Text>
                     </View>
-                    <Text style={styles.planSub}>Half Month / 15 Days</Text>
+                    <Text style={styles.planSub}>Select 1-30 Days</Text>
                   </TouchableOpacity>
                 </View>
+              </View>
+
+              {planType === 'custom' && (
+                <View style={styles.sectionContainer}>
+                  <Text style={styles.fieldLabel}>Number of Days (1-30):</Text>
+                  <TextInput
+                    style={styles.daysInput}
+                    keyboardType="numeric"
+                    maxLength={2}
+                    value={customDays}
+                    onChangeText={(text) => {
+                      const num = text.replace(/[^0-9]/g, '');
+                      setCustomDays(num);
+                    }}
+                    placeholder="e.g. 15"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                  {!isValidCustomDays && customDays !== '' && (
+                    <Text style={styles.errorText}>Please enter a valid number of days (1-30).</Text>
+                  )}
+                </View>
+              )}
+
+              {/* SUBSCRIPTION TYPE / MEALS */}
+              <View style={styles.sectionContainer}>
+                <Text style={styles.fieldLabel}>Subscription Type (Select Meals):</Text>
+                <View style={styles.mealsContainer}>
+                  <TouchableOpacity 
+                    style={styles.mealCheckbox} 
+                    onPress={() => setMeals({...meals, breakfast: !meals.breakfast})}
+                  >
+                    <Ionicons name={meals.breakfast ? "checkbox" : "square-outline"} size={24} color={meals.breakfast ? COLORS.primary : COLORS.textMuted} />
+                    <Text style={styles.mealLabel}>Breakfast</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.mealCheckbox} 
+                    onPress={() => setMeals({...meals, lunch: !meals.lunch})}
+                  >
+                    <Ionicons name={meals.lunch ? "checkbox" : "square-outline"} size={24} color={meals.lunch ? COLORS.primary : COLORS.textMuted} />
+                    <Text style={styles.mealLabel}>Lunch</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.mealCheckbox} 
+                    onPress={() => setMeals({...meals, dinner: !meals.dinner})}
+                  >
+                    <Ionicons name={meals.dinner ? "checkbox" : "square-outline"} size={24} color={meals.dinner ? COLORS.primary : COLORS.textMuted} />
+                    <Text style={styles.mealLabel}>Dinner</Text>
+                  </TouchableOpacity>
+                </View>
+                {!hasMealsSelected && (
+                  <Text style={styles.errorText}>Please select at least one meal.</Text>
+                )}
               </View>
 
               {/* 2. SELECT PAYMENT START DATE */}
@@ -163,34 +235,51 @@ export const PaymentModal: React.FC<Props> = ({
 
               {/* 3. DYNAMICALLY CALCULATED SUMMARY */}
               <View style={styles.summaryContainer}>
-                <Text style={styles.summaryHeading}>Automatic Expiry Calculation:</Text>
+                <Text style={styles.summaryHeading}>Calculation Summary:</Text>
                 
                 <View style={styles.row}>
-                  <Text style={styles.label}>Plan Selected:</Text>
+                  <Text style={styles.label}>Plan / Duration:</Text>
                   <Text style={styles.value}>
-                    {planType === '15days' ? '15 Days (Half Month)' : 'Monthly (1 Month)'}
+                    {planType === 'custom' ? `Custom (${durationDays} Days)` : 'Monthly (30 Days)'}
                   </Text>
                 </View>
 
                 <View style={styles.row}>
-                  <Text style={styles.label}>Subscription Start:</Text>
+                  <Text style={styles.label}>Valid From:</Text>
                   <Text style={styles.value}>{previewStart}</Text>
                 </View>
 
                 <View style={styles.row}>
-                  <Text style={styles.label}>Calculated Expiry:</Text>
-                  <Text style={styles.valueHighlight}>{previewExpiry}</Text>
+                  <Text style={styles.label}>Valid Until:</Text>
+                  <Text style={styles.value}>{previewExpiry}</Text>
                 </View>
 
-                <View style={styles.row}>
-                  <Text style={styles.label}>New Status:</Text>
-                  <Text style={[styles.value, { color: COLORS.active, fontWeight: '700' }]}>
-                    🟢 Active ({planType === '15days' ? '15 Days' : '1 Month'})
-                  </Text>
+                <View style={[styles.row, { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: COLORS.border }]}>
+                  <Text style={styles.label}>Total Amount:</Text>
+                  <Text style={styles.valueHighlight}>₹{totalAmount}</Text>
                 </View>
               </View>
 
-              {/* 4. OPTIONAL NOTE */}
+              {/* 4. TOTAL AMOUNT INPUT */}
+              <View style={styles.inputContainer}>
+                <Text style={styles.fieldLabel}>Total Payment Amount (₹):</Text>
+                <TextInput
+                  style={styles.daysInput}
+                  keyboardType="numeric"
+                  value={totalAmountInput}
+                  onChangeText={(text) => {
+                    const num = text.replace(/[^0-9]/g, '');
+                    setTotalAmountInput(num);
+                  }}
+                  placeholder="e.g. 1500"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+                {totalAmount === 0 && totalAmountInput !== '' && (
+                  <Text style={styles.errorText}>Please enter a valid amount.</Text>
+                )}
+              </View>
+
+              {/* 5. OPTIONAL NOTE */}
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Optional Payment Note / Mode:</Text>
                 <TextInput
@@ -203,12 +292,13 @@ export const PaymentModal: React.FC<Props> = ({
               </View>
 
               <TouchableOpacity
-                activeOpacity={0.8}
-                style={styles.confirmButton}
+                activeOpacity={isValid ? 0.8 : 1}
+                style={[styles.confirmButton, !isValid && styles.confirmButtonDisabled]}
                 onPress={handleConfirm}
+                disabled={!isValid}
               >
                 <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={styles.confirmButtonText}>Confirm & Record Payment</Text>
+                <Text style={styles.confirmButtonText}>Confirm Payment (₹{totalAmount})</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -434,9 +524,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 8,
   },
+  confirmButtonDisabled: {
+    backgroundColor: COLORS.textMuted,
+    opacity: 0.7,
+  },
   confirmButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  },
+  daysInput: {
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: COLORS.textPrimary,
+  },
+  errorText: {
+    color: COLORS.danger,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  mealsContainer: {
+    gap: 12,
+  },
+  mealCheckbox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mealLabel: {
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    marginLeft: 10,
+    fontWeight: '500',
   },
 });

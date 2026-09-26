@@ -17,7 +17,8 @@ import { settingsService } from '../../services/settingsService';
 import { StatusBadge } from '../../components/StatusBadge';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { PaymentModal } from '../../components/PaymentModal';
-import { Student, PlanType } from '../../types';
+import { DatePickerModal } from '../../components/DatePickerModal';
+import { Student, PlanType, MealSelection } from '../../types';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import { differenceInDays, parseISO, startOfDay } from 'date-fns';
 
@@ -31,6 +32,8 @@ export default function StudentDetailsScreen() {
   // Dialog & Modal state
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [pauseDateModalVisible, setPauseDateModalVisible] = useState(false);
+  const [selectedPauseDate, setSelectedPauseDate] = useState<Date>(new Date());
 
   const fetchStudentDetails = async () => {
     if (!id) return;
@@ -71,9 +74,7 @@ export default function StudentDetailsScreen() {
     );
   }
 
-  const daysRemaining = student.subscriptionExpiry
-    ? differenceInDays(startOfDay(parseISO(student.subscriptionExpiry)), startOfDay(new Date()))
-    : undefined;
+  const daysRemaining = studentService.calculateRemainingDays(student);
 
   const handleCallPhone = () => {
     if (student.phone) {
@@ -96,15 +97,53 @@ export default function StudentDetailsScreen() {
     studentId: string,
     paymentDate: Date,
     note?: string,
-    planType?: PlanType
+    planType?: PlanType,
+    durationDays?: number,
+    meals?: MealSelection,
+    amount?: number
   ) => {
-    const res = await studentService.recordPayment(studentId, paymentDate, undefined, note, planType);
+    const res = await studentService.recordPayment(studentId, paymentDate, amount, note, planType, durationDays, meals);
     if (res.success) {
       Alert.alert('Success', 'Payment recorded successfully.');
       fetchStudentDetails();
     } else {
       Alert.alert('Error', res.error || 'Failed to record payment.');
     }
+  };
+
+  const handleConfirmPause = async (date: Date) => {
+    setPauseDateModalVisible(false);
+    if (!student) return;
+    const res = await studentService.pauseSubscription(student.id, date);
+    if (res.success) {
+      Alert.alert('Paused', 'Subscription has been paused.');
+      fetchStudentDetails();
+    } else {
+      Alert.alert('Error', res.error || 'Failed to pause subscription.');
+    }
+  };
+
+  const handleResumePress = async () => {
+    if (!student) return;
+    Alert.alert(
+      'Resume Subscription',
+      'Are you sure you want to resume the subscription? A mandatory 3-day deduction will be applied to the pause duration.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Resume',
+          onPress: async () => {
+            const res = await studentService.resumeSubscription(student.id, new Date());
+            if (res.success) {
+              Alert.alert('Resumed', 'Subscription is now active again.');
+              fetchStudentDetails();
+            } else {
+              Alert.alert('Error', res.error || 'Failed to resume subscription.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const latestPlanType = student.paymentHistory && student.paymentHistory.length > 0
@@ -167,27 +206,56 @@ export default function StudentDetailsScreen() {
                   student.status === 'expiring' && { color: COLORS.expiring, fontWeight: '700' },
                 ]}
               >
-                {paymentService.formatDisplayDate(student.subscriptionExpiry, 'N/A')}
+                {student.status === 'paused' ? 'PAUSED' : paymentService.formatDisplayDate(student.subscriptionExpiry, 'N/A')}
               </Text>
             </View>
             <View style={styles.infoCol}>
               <Text style={styles.infoLabel}>Plan Type</Text>
               <Text style={styles.infoValue}>
-                {latestPlanType === '15days' ? '15 Days (Half Month)' : 'Monthly (1 Month)'}
+                {latestPlanType === 'custom' ? 'Custom Plan' : 'Monthly (1 Month)'}
               </Text>
             </View>
           </View>
 
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={styles.payButton}
-            onPress={() => setPaymentModalVisible(true)}
-          >
-            <Ionicons name="card-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-            <Text style={styles.payButtonText}>
-              {student.status === 'active' || student.status === 'expiring' ? 'Renew Payment' : 'Record Payment'}
-            </Text>
-          </TouchableOpacity>
+          {student.status === 'active' || student.status === 'expiring' ? (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[
+                styles.payButton, 
+                !studentService.canPauseSubscription(student).canPause && { backgroundColor: COLORS.textMuted }
+              ]}
+              onPress={() => {
+                const pauseCheck = studentService.canPauseSubscription(student);
+                if (!pauseCheck.canPause) {
+                  Alert.alert('Cannot Pause', pauseCheck.reason || 'Subscription cannot be paused.');
+                } else {
+                  setSelectedPauseDate(new Date());
+                  setPauseDateModalVisible(true);
+                }
+              }}
+            >
+              <Ionicons name="pause-circle-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.payButtonText}>Pause Subscription</Text>
+            </TouchableOpacity>
+          ) : student.status === 'paused' ? (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.payButton}
+              onPress={handleResumePress}
+            >
+              <Ionicons name="play-circle-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.payButtonText}>Resume Subscription</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.payButton}
+              onPress={() => setPaymentModalVisible(true)}
+            >
+              <Ionicons name="card-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.payButtonText}>Renew Payment</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Payment History Section */}
@@ -207,8 +275,9 @@ export default function StudentDetailsScreen() {
                       Paid: {paymentService.formatDisplayDate(item.paymentDate)}
                     </Text>
                     <Text style={styles.historySub}>
-                      Valid: {paymentService.formatDisplayDate(item.subscriptionStart)} - {paymentService.formatDisplayDate(item.subscriptionExpiry)} ({item.planType === '15days' ? '15 Days' : 'Monthly'})
+                      Valid: {paymentService.formatDisplayDate(item.subscriptionStart)} - {paymentService.formatDisplayDate(item.subscriptionExpiry)} ({item.planType === 'custom' ? `${item.durationDays || '?'} Days` : 'Monthly'})
                     </Text>
+                    {item.amount ? <Text style={styles.historyNote}>Amount: ₹{item.amount}</Text> : null}
                     {item.note ? <Text style={styles.historyNote}>Note: {item.note}</Text> : null}
                   </View>
                 </View>
@@ -262,6 +331,14 @@ export default function StudentDetailsScreen() {
         student={student}
         onConfirm={handleConfirmPayment}
         onClose={() => setPaymentModalVisible(false)}
+      />
+
+      {/* Pause Date Picker Modal */}
+      <DatePickerModal
+        visible={pauseDateModalVisible}
+        selectedDate={selectedPauseDate}
+        onSelectDate={handleConfirmPause}
+        onClose={() => setPauseDateModalVisible(false)}
       />
     </SafeAreaView>
   );

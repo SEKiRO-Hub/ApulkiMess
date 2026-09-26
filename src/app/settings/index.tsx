@@ -59,11 +59,6 @@ export default function SettingsScreen() {
     setSettings(updated);
   };
 
-  const handleLoadSampleData = async () => {
-    await studentService.loadSampleData();
-    Alert.alert('Sample Data Loaded', 'Sample student records have been added to your dashboard.');
-  };
-
   const handleConfirmClearAllData = async () => {
     await studentService.clearAllData();
     setClearDataConfirmVisible(false);
@@ -142,18 +137,7 @@ export default function SettingsScreen() {
 
         {/* Development & Demo Section */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Data Management & Demo</Text>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            style={styles.sampleDataBtn}
-            onPress={handleLoadSampleData}
-          >
-            <Ionicons name="sparkles-outline" size={18} color={COLORS.primary} style={{ marginRight: 8 }} />
-            <Text style={styles.sampleDataBtnText}>Reload Sample Student Records</Text>
-          </TouchableOpacity>
-
-          <View style={{ height: 10 }} />
+          <Text style={styles.sectionTitle}>Data Management</Text>
 
           <TouchableOpacity
             activeOpacity={0.8}
@@ -296,26 +280,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.textPrimary,
-  },
-  switchSublabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 2,
-  },
-  sampleDataBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.primaryLight,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-  },
-  sampleDataBtnText: {
-    color: COLORS.primary,
-    fontSize: 14,
-    fontWeight: '700',
   },
   clearDataBtn: {
     flexDirection: 'row',

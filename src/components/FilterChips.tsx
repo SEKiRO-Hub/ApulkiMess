@@ -23,6 +23,7 @@ export const FilterChips: React.FC<Props> = ({
     { key: 'expiring', label: '🟠 Expiring Soon' },
     { key: 'expired', label: '🔴 Expired' },
     { key: 'unpaid', label: '⚪ Unpaid' },
+    { key: 'paused', label: '⏸️ Paused' },
   ];
 
   const sortOptions: { key: SortOption; label: string }[] = [

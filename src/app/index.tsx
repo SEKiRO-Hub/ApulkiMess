@@ -17,6 +17,7 @@ import { SummaryCard } from '../components/SummaryCard';
 import { SearchBar } from '../components/SearchBar';
 import { StudentCard } from '../components/StudentCard';
 import { FilterChips } from '../components/FilterChips';
+import { DatePickerModal } from '../components/DatePickerModal';
 import { EmptyState } from '../components/EmptyState';
 import { PaymentModal } from '../components/PaymentModal';
 import { NotificationBanner } from '../components/NotificationBanner';
@@ -44,6 +45,10 @@ export default function DashboardScreen() {
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [selectedStudentForPayment, setSelectedStudentForPayment] = useState<Student | null>(null);
 
+  const [pauseDateModalVisible, setPauseDateModalVisible] = useState(false);
+  const [selectedStudentForPause, setSelectedStudentForPause] = useState<Student | null>(null);
+  const [selectedPauseDate, setSelectedPauseDate] = useState<Date>(new Date());
+
   // In-app Notification Banner State
   const [alerts, setAlerts] = useState<any[]>([]);
 
@@ -52,12 +57,7 @@ export default function DashboardScreen() {
       const currentSettings = await settingsService.getSettings();
       setSettings(currentSettings);
 
-      let list = await studentService.getStudents(currentSettings.warningDays);
-
-      // If app is opened first time with no data, optionally auto-seed sample data or leave empty
-      if (list.length === 0) {
-        list = await studentService.loadSampleData();
-      }
+      const list = await studentService.getStudents(currentSettings.warningDays);
 
       setStudents(list);
 
@@ -125,6 +125,46 @@ export default function DashboardScreen() {
     }
   };
 
+  const handleOpenPauseModal = (student: Student) => {
+    setSelectedStudentForPause(student);
+    setSelectedPauseDate(new Date());
+    setPauseDateModalVisible(true);
+  };
+
+  const handleConfirmPause = async (date: Date) => {
+    setPauseDateModalVisible(false);
+    if (!selectedStudentForPause) return;
+    const res = await studentService.pauseSubscription(selectedStudentForPause.id, date);
+    if (res.success) {
+      Alert.alert('Paused', 'Subscription has been paused.');
+      loadData();
+    } else {
+      Alert.alert('Error', res.error || 'Failed to pause subscription.');
+    }
+  };
+
+  const handleResumeSubscription = async (student: Student) => {
+    Alert.alert(
+      'Resume Subscription',
+      'Are you sure you want to resume the subscription? A mandatory 3-day deduction will be applied to the pause duration.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Resume',
+          onPress: async () => {
+            const res = await studentService.resumeSubscription(student.id, new Date());
+            if (res.success) {
+              Alert.alert('Resumed', 'Subscription is now active again.');
+              loadData();
+            } else {
+              Alert.alert('Error', res.error || 'Failed to resume subscription.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const isDefaultView = searchQuery === '' && activeFilter === 'all';
 
   return (
@@ -184,6 +224,24 @@ export default function DashboardScreen() {
                     onPress={setActiveFilter}
                   />
                 </View>
+                <View style={[styles.summaryRow, { marginTop: 10 }]}>
+                  <SummaryCard
+                    title="Unpaid"
+                    count={stats.unpaid}
+                    type="unpaid"
+                    filterKey="unpaid"
+                    activeFilter={activeFilter}
+                    onPress={setActiveFilter}
+                  />
+                  <SummaryCard
+                    title="Paused"
+                    count={stats.paused}
+                    type="paused"
+                    filterKey="paused"
+                    activeFilter={activeFilter}
+                    onPress={setActiveFilter}
+                  />
+                </View>
               </View>
 
               {/* Search Bar */}
@@ -215,6 +273,8 @@ export default function DashboardScreen() {
                       student={student}
                       onPress={handleStudentPress}
                       onMarkAsPaid={handleOpenPaymentModal}
+                      onPause={handleOpenPauseModal}
+                      onResume={handleResumeSubscription}
                       warningDays={settings.warningDays}
                     />
                   ))}
@@ -235,6 +295,8 @@ export default function DashboardScreen() {
                       student={student}
                       onPress={handleStudentPress}
                       onMarkAsPaid={handleOpenPaymentModal}
+                      onPause={handleOpenPauseModal}
+                      onResume={handleResumeSubscription}
                       warningDays={settings.warningDays}
                     />
                   ))}
@@ -256,6 +318,8 @@ export default function DashboardScreen() {
               student={item}
               onPress={handleStudentPress}
               onMarkAsPaid={handleOpenPaymentModal}
+              onPause={handleOpenPauseModal}
+              onResume={handleResumeSubscription}
               warningDays={settings.warningDays}
             />
           )}
@@ -302,6 +366,14 @@ export default function DashboardScreen() {
           student={selectedStudentForPayment}
           onConfirm={handleConfirmPayment}
           onClose={() => setPaymentModalVisible(false)}
+        />
+
+        {/* Pause Date Picker Modal */}
+        <DatePickerModal
+          visible={pauseDateModalVisible}
+          selectedDate={selectedPauseDate}
+          onSelectDate={handleConfirmPause}
+          onClose={() => setPauseDateModalVisible(false)}
         />
       </View>
     </SafeAreaView>

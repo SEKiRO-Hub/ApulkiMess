@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Linking, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Student } from '../types';
 import { StatusBadge } from './StatusBadge';
 import { paymentService } from '../services/paymentService';
+import { studentService } from '../services/studentService';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { differenceInDays, parseISO, startOfDay } from 'date-fns';
 
@@ -11,6 +12,8 @@ interface Props {
   student: Student;
   onPress: (student: Student) => void;
   onMarkAsPaid: (student: Student) => void;
+  onPause?: (student: Student) => void;
+  onResume?: (student: Student) => void;
   warningDays?: number;
 }
 
@@ -18,14 +21,16 @@ export const StudentCard: React.FC<Props> = ({
   student,
   onPress,
   onMarkAsPaid,
+  onPause,
+  onResume,
   warningDays = 3,
 }) => {
   const formattedPaymentDate = paymentService.formatDisplayDate(student.paymentDate, 'Not paid yet');
-  const formattedExpiryDate = paymentService.formatDisplayDate(student.subscriptionExpiry, 'No active plan');
+  const formattedExpiryDate = student.status === 'paused' 
+    ? 'PAUSED' 
+    : paymentService.formatDisplayDate(student.subscriptionExpiry, 'No active plan');
 
-  const daysRemaining = student.subscriptionExpiry
-    ? differenceInDays(startOfDay(parseISO(student.subscriptionExpiry)), startOfDay(new Date()))
-    : undefined;
+  const daysRemaining = studentService.calculateRemainingDays(student);
 
   const handleCall = () => {
     if (student.phone) {
@@ -76,16 +81,41 @@ export const StudentCard: React.FC<Props> = ({
       </View>
 
       <View style={styles.actionRow}>
-        <TouchableOpacity
-          activeOpacity={0.8}
-          style={styles.payButton}
-          onPress={() => onMarkAsPaid(student)}
-        >
-          <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" style={styles.btnIcon} />
-          <Text style={styles.payButtonText}>
-            {student.status === 'active' || student.status === 'expiring' ? 'Renew Payment' : 'Mark as Paid'}
-          </Text>
-        </TouchableOpacity>
+        {student.status === 'active' || student.status === 'expiring' ? (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={[styles.payButton, !studentService.canPauseSubscription(student).canPause && { backgroundColor: COLORS.textMuted }]}
+            onPress={() => {
+              const pauseCheck = studentService.canPauseSubscription(student);
+              if (!pauseCheck.canPause) {
+                Alert.alert('Cannot Pause', pauseCheck.reason || 'Subscription cannot be paused.');
+              } else if (onPause) {
+                onPause(student);
+              }
+            }}
+          >
+            <Ionicons name="pause-circle-outline" size={18} color="#FFFFFF" style={styles.btnIcon} />
+            <Text style={styles.payButtonText}>Pause</Text>
+          </TouchableOpacity>
+        ) : student.status === 'paused' ? (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={styles.payButton}
+            onPress={() => onResume && onResume(student)}
+          >
+            <Ionicons name="play-circle-outline" size={18} color="#FFFFFF" style={styles.btnIcon} />
+            <Text style={styles.payButtonText}>Resume</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={styles.payButton}
+            onPress={() => onMarkAsPaid(student)}
+          >
+            <Ionicons name="card-outline" size={18} color="#FFFFFF" style={styles.btnIcon} />
+            <Text style={styles.payButtonText}>Renew Payment</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </TouchableOpacity>
   );

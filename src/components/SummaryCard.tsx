@@ -7,7 +7,7 @@ import { FilterStatus } from '../types';
 interface Props {
   title: string;
   count: number;
-  type: 'total' | 'active' | 'expiring' | 'expired';
+  type: 'total' | 'active' | 'expiring' | 'expired' | 'unpaid' | 'paused';
   filterKey: FilterStatus;
   activeFilter: FilterStatus;
   onPress: (filter: FilterStatus) => void;
@@ -42,6 +42,18 @@ export const SummaryCard: React.FC<Props> = ({
           color: COLORS.expired,
           bg: COLORS.expiredBg,
           icon: 'alert-circle-outline' as const,
+        };
+      case 'unpaid':
+        return {
+          color: COLORS.textMuted || '#9E9E9E',
+          bg: '#F5F5F5',
+          icon: 'wallet-outline' as const,
+        };
+      case 'paused':
+        return {
+          color: '#2196F3',
+          bg: '#E3F2FD',
+          icon: 'pause-circle-outline' as const,
         };
       case 'total':
       default:

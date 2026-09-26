@@ -1,7 +1,6 @@
 import { AppSettings } from '../types';
-import { storage } from './storage';
-
-const SETTINGS_KEY = '@apulki_mess_settings_v1';
+import { ref, get, set } from 'firebase/database';
+import { db } from '../../firebase';
 
 export const DEFAULT_SETTINGS: AppSettings = {
   messName: 'Apulki Mess',
@@ -11,23 +10,37 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 export const settingsService = {
   async getSettings(): Promise<AppSettings> {
-    const saved = await storage.getItem<AppSettings>(SETTINGS_KEY);
-    if (!saved) {
-      await storage.setItem(SETTINGS_KEY, DEFAULT_SETTINGS);
+    try {
+      const snapshot = await get(ref(db, 'settings'));
+      if (snapshot.exists()) {
+        const saved = snapshot.val();
+        return { ...DEFAULT_SETTINGS, ...saved };
+      }
+      await set(ref(db, 'settings'), DEFAULT_SETTINGS);
+      return DEFAULT_SETTINGS;
+    } catch (error) {
+      console.error('Failed to fetch settings from Firebase:', error);
       return DEFAULT_SETTINGS;
     }
-    return { ...DEFAULT_SETTINGS, ...saved };
   },
 
   async updateSettings(newSettings: Partial<AppSettings>): Promise<AppSettings> {
     const current = await this.getSettings();
     const updated = { ...current, ...newSettings };
-    await storage.setItem(SETTINGS_KEY, updated);
+    try {
+      await set(ref(db, 'settings'), updated);
+    } catch (error) {
+      console.error('Failed to update settings in Firebase:', error);
+    }
     return updated;
   },
 
   async resetSettings(): Promise<AppSettings> {
-    await storage.setItem(SETTINGS_KEY, DEFAULT_SETTINGS);
+    try {
+      await set(ref(db, 'settings'), DEFAULT_SETTINGS);
+    } catch (error) {
+      console.error('Failed to reset settings in Firebase:', error);
+    }
     return DEFAULT_SETTINGS;
   },
 };
