@@ -8,18 +8,12 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/YOUR-PROJECT-ID",
+      "url": "https://u.expo.dev/1d9150c0-8262-483a-a105-d8e23109c28e",
       "fallbackToCacheTimeout": 0
-    },
-    "extra": {
-      "eas": {
-        "projectId": "YOUR-PROJECT-ID"
-      }
     },
     "orientation": "portrait",
     "icon": "./assets/icon-1024.png",
     "userInterfaceStyle": "light",
-
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.ApulkiMess"
@@ -31,7 +25,6 @@
         "backgroundImage": "./assets/android-icon-background-1024.png",
         "monochromeImage": "./assets/android-icon-monochrome-1024.png"
       },
-
       "package": "com.anonymous.ApulkiMess"
     },
     "web": {
@@ -50,6 +43,13 @@
           "imageWidth": 200
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "1d9150c0-8262-483a-a105-d8e23109c28e"
+      }
+    },
+    "owner": "aryanbhoge"
   }
 }
