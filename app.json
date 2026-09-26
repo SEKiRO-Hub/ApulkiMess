@@ -4,6 +4,18 @@
     "slug": "ApulkiMess",
     "scheme": "apulkimess",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/YOUR-PROJECT-ID",
+      "fallbackToCacheTimeout": 0
+    },
+    "extra": {
+      "eas": {
+        "projectId": "YOUR-PROJECT-ID"
+      }
+    },
     "orientation": "portrait",
     "icon": "./assets/icon-1024.png",
     "userInterfaceStyle": "light",
